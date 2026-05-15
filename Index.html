@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Weaver AI</title>
+
+<style>
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+  font-family:system-ui, Arial;
+}
+
+html,body{
+  height:100%;
+  background:#0f0f10;
+  color:white;
+}
+
+/* APP */
+.app{
+  display:flex;
+  height:100vh;
+  overflow:hidden;
+}
+
+/* OVERLAY */
+.overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.4);
+  z-index:900;
+
+  opacity:0;
+  pointer-events:none;
+  transition:0.3s;
+}
+
+.overlay.show{
+  opacity:1;
+  pointer-events:auto;
+}
+
+/* SIDEBAR */
+.sidebar{
+  width:260px;
+  background:#171717;
+  border-right:1px solid #2a2a2a;
+  display:flex;
+  flex-direction:column;
+  padding:12px;
+  overflow-y:auto;
+  transition:0.3s;
+  z-index:1000;
+}
+
+.logo{
+  font-size:18px;
+  font-weight:bold;
+  margin-bottom:10px;
+}
+
+.new-chat{
+  padding:10px;
+  background:#2a2a2a;
+  color:white;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  margin-bottom:10px;
+}
+
+.chat-item{
+  padding:10px;
+  margin-top:8px;
+  background:#1f1f1f;
+  border-radius:8px;
+  cursor:pointer;
+}
+
+.chat-item.active{
+  background:#2b2b2b;
+}
+
+.small{
+  margin-top:auto;
+  font-size:12px;
+  color:#777;
+}
+
+/* MAIN */
+.main{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  height:100vh;
+}
+
+/* MENU */
+.menu-bar{
+  padding:10px;
+  border-bottom:1px solid #2a2a2a;
+  background:#0f0f10;
+}
+
+.menu-btn{
+  width:45px;
+  height:45px;
+  border:none;
+  border-radius:10px;
+  background:#2a2a2a;
+  color:white;
+  font-size:22px;
+  cursor:pointer;
+}
+
+/* CHAT AREA */
+.chat-area{
+  flex:1;
+  overflow-y:auto;
+  padding:20px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-height:0;
+}
+
+.msg{
+  padding:10px;
+  border-radius:10px;
+  max-width:70%;
+  white-space:pre-wrap;
+}
+
+.user{
+  background:#2563eb;
+  margin-left:auto;
+}
+
+.ai{
+  background:#1f1f1f;
+  margin-right:auto;
+}
+
+/* INPUT */
+.input-box{
+  display:flex;
+  gap:10px;
+  padding:12px;
+  border-top:1px solid #2a2a2a;
+  background:#0f0f10;
+}
+
+textarea{
+  flex:1;
+  min-height:55px;
+  max-height:120px;
+  resize:none;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid #333;
+  background:#111;
+  color:white;
+}
+
+button.send{
+  width:90px;
+  border:none;
+  border-radius:10px;
+  background:white;
+  color:black;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+/* MOBILE */
+@media(max-width:768px){
+  .sidebar{
+    position:fixed;
+    left:-260px;
+    top:0;
+    height:100%;
+  }
+
+  .sidebar.open{
+    left:0;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="overlay" onclick="closeSidebar()"></div>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <div class="logo">🧠 Weaver</div>
+
+    <button class="new-chat" onclick="newChat()">+ New Chat</button>
+
+    <div id="chatList"></div>
+
+    <div class="small">Free Version</div>
+
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <div class="menu-bar">
+      <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+    </div>
+
+    <div id="chatArea" class="chat-area"></div>
+
+    <div class="input-box">
+      <textarea id="input" placeholder="Ask Weaver..."></textarea>
+      <button class="send" onclick="send()">Send</button>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+
+let chats = JSON.parse(localStorage.getItem("weaver_chats")) || [];
+let activeChat = localStorage.getItem("active_chat") || null;
+
+/* SAVE */
+function save(){
+  localStorage.setItem("weaver_chats", JSON.stringify(chats));
+  localStorage.setItem("active_chat", activeChat);
+}
+
+/* ACTIVE CHAT */
+function getActive(){
+  return chats.find(c => c.id === activeChat);
+}
+
+/* CREATE CHAT */
+function createChat(firstText="New Chat"){
+  const chat = {
+    id: Date.now().toString(),
+    title: firstText.slice(0,25),
+    messages:[]
+  };
+
+  chats.unshift(chat);
+  activeChat = chat.id;
+
+  save();
+  render();
+}
+
+/* NEW CHAT */
+function newChat(){
+  activeChat = null;
+  document.getElementById("chatArea").innerHTML = "";
+  save();
+  renderSidebar();
+  closeSidebar();
+}
+
+/* SWITCH CHAT */
+function switchChat(id){
+  activeChat = id;
+  save();
+  render();
+  closeSidebar();
+}
+
+/* SIDEBAR */
+function renderSidebar(){
+  const list = document.getElementById("chatList");
+  list.innerHTML = "";
+
+  chats.forEach(c=>{
+    const wrapper = document.createElement("div");
+    wrapper.style.display = "flex";
+    wrapper.style.justifyContent = "space-between";
+    wrapper.style.alignItems = "center";
+    wrapper.style.gap = "8px";
+    wrapper.style.marginTop = "8px";
+
+    const div = document.createElement("div");
+    div.className = "chat-item" + (c.id===activeChat?" active":"");
+    div.style.flex = "1";
+    div.innerText = c.title;
+    div.onclick = ()=>switchChat(c.id);
+
+    const del = document.createElement("button");
+    del.innerText = "🗑";
+    del.style.background = "#7f1d1d";
+    del.style.border = "none";
+    del.style.color = "white";
+    del.style.borderRadius = "6px";
+    del.style.padding = "6px";
+    del.style.cursor = "pointer";
+
+    del.onclick = (e)=>{
+      e.stopPropagation();
+      deleteChat(c.id);
+    };
+
+    wrapper.appendChild(div);
+    wrapper.appendChild(del);
+
+    list.appendChild(wrapper);
+  });
+}
+function deleteChat(id){
+
+  chats = chats.filter(c => c.id !== id);
+
+  if(activeChat === id){
+    activeChat = chats[0]?.id || null;
+  }
+
+  save();
+  render();
+}
+/* CHAT */
+function renderChat(){
+  const area = document.getElementById("chatArea");
+  area.innerHTML = "";
+
+  const chat = getActive();
+  if(!chat) return;
+
+  chat.messages.forEach(m=>{
+    const div = document.createElement("div");
+    div.className = "msg "+m.role;
+    div.textContent = m.content;
+    area.appendChild(div);
+  });
+
+  area.scrollTop = area.scrollHeight;
+}
+
+/* RENDER */
+function render(){
+  renderSidebar();
+  renderChat();
+}
+
+/* SIDEBAR CONTROLS */
+function toggleSidebar(){
+  document.querySelector(".sidebar").classList.toggle("open");
+  document.querySelector(".overlay").classList.toggle("show");
+}
+
+function closeSidebar(){
+  document.querySelector(".sidebar").classList.remove("open");
+  document.querySelector(".overlay").classList.remove("show");
+}
+
+/* SEND */
+async function send(){
+
+  const input = document.getElementById("input");
+  const text = input.value.trim();
+  if(!text) return;
+
+  if(!getActive()){
+    createChat(text);
+  }
+
+  const chat = getActive();
+
+  chat.messages.push({role:"user", content:text});
+  input.value="";
+  save();
+  render();
+
+  try{
+
+    const res = await fetch("/api/chat",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({messages:chat.messages})
+    });
+
+    const data = await res.json();
+
+    chat.messages.push({
+      role:"ai",
+      content:data.reply || "Error"
+    });
+
+  }catch(e){
+    chat.messages.push({
+      role:"ai",
+      content:"Network error"
+    });
+  }
+
+  save();
+  render();
+}
+
+render();
+
+</script>
+
+</body>
+</html>
